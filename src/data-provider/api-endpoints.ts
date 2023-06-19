@@ -1,4 +1,5 @@
 const BASE_URL = "https://chat.imjoy.io"
+
 export const user = () => {
   return `${BASE_URL}/api/user`;
 };
@@ -56,37 +57,37 @@ export const tokenizer = () => {
 };
 
 export const login = () => {
-  return '/api/auth/login';
+  return `${BASE_URL}/api/auth/login`;
 };
 
 export const logout = () => {
-  return '/api/auth/logout';
+  return `${BASE_URL}/api/auth/logout`;
 };
 
 export const register = () => {
-  return '/api/auth/register';
+  return `${BASE_URL}/api/auth/register`;
 };
 
 export const loginFacebook = () => {
-  return '/api/auth/facebook';
+  return `${BASE_URL}/api/auth/facebook`;
 };
 
 export const loginGoogle = () => {
-  return '/api/auth/google';
+  return `${BASE_URL}/api/auth/google`;
 };
 
 export const refreshToken = () => {
-  return '/api/auth/refresh';
+  return `${BASE_URL}/api/auth/refresh`;
 };
 
 export const requestPasswordReset = () => {
-  return '/api/auth/requestPasswordReset';
+  return `${BASE_URL}/api/auth/requestPasswordReset`;
 };
 
 export const resetPassword = () => {
-  return '/api/auth/resetPassword';
+  return `${BASE_URL}/api/auth/resetPassword`;
 };
 
 export const plugins = () => {
-  return '/api/plugins';
+  return `${BASE_URL}/api/plugins`;
 };
