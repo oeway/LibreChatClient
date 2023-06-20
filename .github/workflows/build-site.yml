@@ -30,14 +30,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
       - run: npm ci
-        working-directory: ./web
       - run: npm run build:github-pages
-        working-directory: ./web
       - name: Save build output
         uses: actions/upload-artifact@v1
         with:
           name: built-output
-          path: ./web/dist
+          path: ./dist
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
 
@@ -50,9 +48,9 @@ jobs:
         uses: actions/download-artifact@v1
         with:
           name: built-output
-          path: ./web/dist
+          path: ./dist
       - name: Deploy site to Github pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./web/dist
+          publish_dir: ./dist
