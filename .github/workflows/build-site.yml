@@ -30,7 +30,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
       - run: npm ci
-      - run: npm run build:github-pages
+      - run: npm run build
       - name: Save build output
         uses: actions/upload-artifact@v1
         with:
@@ -54,3 +54,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          cname: chat.aicell.io
+          enable_jekyll: false
