@@ -7,6 +7,7 @@ import {
   createContext,
   useContext
 } from 'react';
+import { hyphaWebsocketClient } from 'imjoy-rpc';
 import {
   TUser,
   TLoginResponse,
@@ -22,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 export type TAuthContext = {
   user: TUser | undefined;
   token: string | undefined;
+  hypha: any | undefined;
   isAuthenticated: boolean;
   error: string | undefined;
   login: (data: TLoginUser) => void;
@@ -31,6 +33,7 @@ export type TAuthContext = {
 export type TUserContext = {
   user?: TUser | undefined;
   token: string | undefined;
+  hypha: any | undefined;
   isAuthenticated: boolean;
   redirect?: string;
 };
@@ -39,6 +42,7 @@ window['errorTimeout'] = undefined;
 const AuthContext = createContext<TAuthContext | undefined>(undefined);
 
 const AuthContextProvider = ({ children }: { children: ReactNode }) => {
+  const [hypha, setHypha] = useState<any | undefined>(undefined);
   const [user, setUser] = useState<TUser | undefined>(undefined);
   const [token, setToken] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -64,11 +68,12 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
 
   const setUserContext = useCallback(
     (userContext: TUserContext) => {
-      const { token, isAuthenticated, user, redirect } = userContext;
+      const { token, isAuthenticated, user, hypha, redirect } = userContext;
       if (user) {
         setUser(user);
       }
       setToken(token);
+      setHypha(hypha);
       //@ts-ignore - ok for token to be undefined initially
       setTokenHeader(token);
       setIsAuthenticated(isAuthenticated);
@@ -88,7 +93,7 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
     loginUser.mutate(data, {
       onSuccess: (data: TLoginResponse) => {
         const { user, token } = data;
-        setUserContext({ token, isAuthenticated: true, user, redirect: '/chat/new' });
+        setUserContext({ token, isAuthenticated: true, user, redirect: '/chat/new', hypha: undefined });
       },
       onError: (error) => {
         doSetError(error.message);
@@ -108,6 +113,7 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
           token: undefined,
           isAuthenticated: false,
           user: undefined,
+          hypha: undefined,
           redirect: '/login'
         });
       },
@@ -131,9 +137,20 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
     if (!token || !isAuthenticated) {
       const tokenFromCookie = getCookieValue('token');
       if (tokenFromCookie) {
-        setUserContext({ token: tokenFromCookie, isAuthenticated: true, user: userQuery.data });
+        setUserContext({ token: tokenFromCookie, isAuthenticated: true, user: userQuery.data, hypha: undefined });
       } else {
-        navigate('/login');
+        // navigate('/login');
+        hyphaWebsocketClient.login({server_url: "https://ai.imjoy.io", login_callback(context){
+          window.open(context.login_url, "_blank")
+          console.log("login callback", context)
+        }}).then((token) => {
+          hyphaWebsocketClient.connectToServer({server_url: "https://ai.imjoy.io", token: token}).then((server) => {
+            console.log("connected to server", server)  
+            setUserContext({ token, isAuthenticated: true, user: userQuery.data, hypha: server });
+          });
+        }).catch((err) => {
+          console.error(err)
+        })
       }
     }
   }, [
@@ -170,13 +187,14 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
     () => ({
       user,
       token,
+      hypha,
       isAuthenticated,
       error,
       login,
       logout
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, error, isAuthenticated, token]
+    [user, error, isAuthenticated, token, hypha]
   );
 
   return <AuthContext.Provider value={memoedValue}>{children}</AuthContext.Provider>;

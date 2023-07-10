@@ -6,7 +6,7 @@
     "build": "cross-env NODE_ENV=production dotenv -e ./.env -- vite build",
     "build:github-pages": "cross-env NODE_ENV=production dotenv -e ./.env -- vite build --mode ci  --base=/LibreChatClient/",
     "build:ci": "cross-env NODE_ENV=dev vite build --mode ci",
-    "dev": "cross-env NODE_ENV=dev dotenv -e ./.env -- vite",
+    "dev": "cross-env NODE_ENV=dev dotenv -e ./.env -- vite --port 3346",
     "preview-prod": "cross-env NODE_ENV=dev dotenv -e ./.env -- vite preview",
     "test": "cross-env NODE_ENV=test jest --watch",
     "test:ci": "cross-env NODE_ENV=test jest --ci"
@@ -52,6 +52,7 @@
     "export-from-json": "^1.7.2",
     "filenamify": "^6.0.0",
     "html2canvas": "^1.4.1",
+    "imjoy-rpc": "^0.5.30",
     "lodash": "^4.17.21",
     "lucide-react": "^0.220.0",
     "pino": "^8.12.1",

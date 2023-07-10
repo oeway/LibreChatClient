@@ -11,8 +11,7 @@ export default function MessageHandler() {
   const setMessages = useSetRecoilState(store.messages);
   const setConversation = useSetRecoilState(store.conversation);
   const resetLatestMessage = useResetRecoilState(store.latestMessage);
-  const { token } = useAuthContext();
-
+  const { token, hypha } = useAuthContext();
   const { refreshConversations } = store.useConversations();
 
   const messageHandler = (data, submission) => {
@@ -189,64 +188,103 @@ export default function MessageHandler() {
     if (Object.keys(submission).length === 0) return;
 
     let { message } = submission;
+    // const { server, payload } = createPayload(submission);
+    hypha.getService('hypha-chatbot').then(async (svc) => {
+      try{
+          setIsSubmitting(true);
+          let created = false;
+          const response = await svc.chat(message.text, (token)=>{
+              if (!created) {
+                message = {
+                  // ...data.message,
+                  overrideParentMessageId: message?.overrideParentMessageId
+                };
+                createdHandler(null, { ...submission, message });
+                console.log('created', message);
+                created = true;
+              } else {
+                let text = token;//data.text || data.response;
+                // let { initial, plugin } = data;
+                // if (initial) console.log(data);
+        
+                // if (data.message) {
+                  messageHandler(text, { ...submission, plugin, message });
+                // }
+              }
+           }, null, true)
+           finalHandler(response, { ...submission, message });
+           
+      }
+      catch(e){
+        console.log('error in opening conn.');
+        // events.close();
 
-    const { server, payload } = createPayload(submission);
+        // const data = JSON.parse(e.data);
 
-    const events = new SSE(server, {
-      payload: JSON.stringify(payload),
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+        errorHandler(e, { ...submission, message });
+      }
+      finally{
+        setIsSubmitting(false);
+      }
+
+     
     });
 
-    events.onmessage = (e) => {
-      const data = JSON.parse(e.data);
+    // const events = new SSE(server, {
+    //   payload: JSON.stringify(payload),
+    //   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    // });
 
-      if (data.final) {
-        finalHandler(data, { ...submission, message });
-        console.log('final', data);
-      }
-      if (data.created) {
-        message = {
-          ...data.message,
-          overrideParentMessageId: message?.overrideParentMessageId
-        };
-        createdHandler(data, { ...submission, message });
-        console.log('created', message);
-      } else {
-        let text = data.text || data.response;
-        let { initial, plugin } = data;
-        if (initial) console.log(data);
+    // events.onmessage = (e) => {
+    //   const data = JSON.parse(e.data);
 
-        if (data.message) {
-          messageHandler(text, { ...submission, plugin, message });
-        }
-      }
-    };
+    //   // if (data.final) {
+    //   //   finalHandler(data, { ...submission, message });
+    //   //   console.log('final', data);
+    //   // }
+    //   if (data.created) {
+    //     message = {
+    //       ...data.message,
+    //       overrideParentMessageId: message?.overrideParentMessageId
+    //     };
+    //     createdHandler(data, { ...submission, message });
+    //     console.log('created', message);
+    //   } else {
+    //     let text = data.text || data.response;
+    //     let { initial, plugin } = data;
+    //     if (initial) console.log(data);
 
-    events.onopen = () => console.log('connection is opened');
+    //     if (data.message) {
+    //       messageHandler(text, { ...submission, plugin, message });
+    //     }
+    //   }
+    // };
 
-    events.oncancel = () => abortConversation(message?.conversationId || submission?.conversationId);
+    // events.onopen = () => console.log('connection is opened');
 
-    events.onerror = function (e) {
-      console.log('error in opening conn.');
-      events.close();
+    // events.oncancel = () => abortConversation(message?.conversationId || submission?.conversationId);
 
-      const data = JSON.parse(e.data);
+    // events.onerror = function (e) {
+    //   console.log('error in opening conn.');
+    //   events.close();
 
-      errorHandler(data, { ...submission, message });
-    };
+    //   const data = JSON.parse(e.data);
 
-    setIsSubmitting(true);
-    events.stream();
+    //   errorHandler(data, { ...submission, message });
+    // };
+
+    
+    // events.stream();
 
     return () => {
-      const isCancelled = events.readyState <= 1;
-      events.close();
-      // setSource(null);
-      if (isCancelled) {
-        const e = new Event('cancel');
-        events.dispatchEvent(e);
-      }
-      setIsSubmitting(false);
+      // const isCancelled = events.readyState <= 1;
+      // events.close();
+      // // setSource(null);
+      // if (isCancelled) {
+      //   const e = new Event('cancel');
+      //   events.dispatchEvent(e);
+      // }
+      // setIsSubmitting(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submission]);
