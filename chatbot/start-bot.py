@@ -54,12 +54,14 @@ class MyCustomHandler(BaseCallbackHandler):
 
 async def start_bot():
 
-    async def chat(question, append_message=None, chat_history=None, debug=False, context=None):
+    async def chat(question, init=None, stream_output=None, chat_history=None, debug=False, context=None):
         # if context['user']['id'] != 'github|478667':
         #     raise Exception("You are not allowed to chat with this bot.")
         if debug:
-            for token in test_story:
-                await append_message(token)
+            conversation_id = "bd448ecf-bbf6-4eaa-9575-8f1629af7069"
+            await init(conversation_id)
+            for idx in range(0, len(test_story), 100):
+                await stream_output(test_story[idx:idx+100])
             return test_story
 
         if chat_history is None:
@@ -67,8 +69,8 @@ async def start_bot():
             memory = ConversationBufferWindowMemory( k=2)
             for chat in chat_history:
                 memory.save_context({"input": chat["input"]}, {"output": chat["output"]})
-        if append_message is not None:
-            callbacks = [MyCustomHandler(append_message)]
+        if stream_output is not None:
+            callbacks = [MyCustomHandler(stream_output)]
         else:
             callbacks = None
             

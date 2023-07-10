@@ -139,7 +139,7 @@ export default function Nav({ navVisible, setNavVisible }) {
 
   useEffect(() => {
     if (!isSearching) {
-      getConversationsQuery.refetch();
+      // getConversationsQuery.refetch();
     }
   }, [pageNumber, conversationId, refreshConversationsHint]);
 

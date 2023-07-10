@@ -4,6 +4,7 @@ import { SSE } from '~/data-provider/sse.mjs';
 import createPayload from '~/data-provider/createPayload';
 import store from '~/store';
 import { useAuthContext } from '~/hooks/AuthContext';
+import { v4 } from 'uuid';
 
 export default function MessageHandler() {
   const submission = useRecoilValue(store.submission);
@@ -190,32 +191,115 @@ export default function MessageHandler() {
     let { message } = submission;
     // const { server, payload } = createPayload(submission);
     hypha.getService('hypha-chatbot').then(async (svc) => {
-      try{
-          setIsSubmitting(true);
-          let created = false;
-          const response = await svc.chat(message.text, (token)=>{
-              if (!created) {
-                message = {
-                  // ...data.message,
-                  overrideParentMessageId: message?.overrideParentMessageId
-                };
-                createdHandler(null, { ...submission, message });
-                console.log('created', message);
-                created = true;
-              } else {
-                let text = token;//data.text || data.response;
-                // let { initial, plugin } = data;
-                // if (initial) console.log(data);
-        
-                // if (data.message) {
-                  messageHandler(text, { ...submission, plugin, message });
-                // }
-              }
-           }, null, true)
-           finalHandler(response, { ...submission, message });
-           
+      try {
+        setIsSubmitting(true);
+        let accumulatedText = '';
+        const responseMessageId = v4();
+
+        const conversationId = v4();
+        const msg =  {
+          conversationId,
+          isCreatedByUser: true,
+          messageId: message.messageId,
+          parentMessageId: message.parentMessageId,
+          sender: message.sender,
+          text: message.text,
+        };
+        const newMessage = {
+          ...msg,
+          overrideParentMessageId: message?.overrideParentMessageId
+        };
+        createdHandler(null, { ...submission, newMessage });
+        console.log('created', newMessage);
+
+        let token = "===========>"
+        accumulatedText = accumulatedText + token;
+        console.log('token', token);
+        messageHandler(accumulatedText, { ...submission, message });
+        token = "=====================>"
+        accumulatedText = accumulatedText + token;
+        console.log('token', token);
+        messageHandler(accumulatedText, { ...submission, message });
+      
+        const response = {
+          conversationId,
+          text: 'Hello, that is a great question. I am not sure what the answer is.',
+        }
+        const finalResponse = {
+          title: 'Improving Code for Flake8',
+          final: true,
+          conversation: {
+          },
+          requestMessage: {
+            conversationId: response.conversationId,
+            isCreatedByUser: true,
+            messageId: message.messageId,
+            parentMessageId: message.parentMessageId,
+            sender: message.sender,
+            text: message.text,
+          },
+          responseMessage: {
+            cancelled: false,
+            conversationId: response.conversationId,
+            error: false,
+            messageId: responseMessageId,
+            newMessageId: responseMessageId,
+            parentMessageId: message.messageId,
+            sender: "ChatGPT",
+            text: response,
+            unfinished: false
+          }
+        };
+        finalHandler(finalResponse, { ...submission, message });
+
+        // const response = await svc.chat(message.text, (conversationId) => {
+        //   const msg =  {
+        //     conversationId,
+        //     isCreatedByUser: true,
+        //     messageId: message.messageId,
+        //     parentMessageId: message.parentMessageId,
+        //     sender: message.sender,
+        //     text: message.text,
+        //   };
+        //   const newMessage = {
+        //     ...msg,
+        //     overrideParentMessageId: message?.overrideParentMessageId
+        //   };
+        //   createdHandler(null, { ...submission, newMessage });
+        //   console.log('created', newMessage);
+        // }, (token) => {
+        //   accumulatedText = accumulatedText + token;
+        //   console.log('token', token);
+        //   messageHandler(accumulatedText, { ...submission, message });
+        // }, null, true)
+        // const finalResponse = {
+        //   title: 'Improving Code for Flake8',
+        //   final: true,
+        //   conversation: {
+        //   },
+        //   requestMessage: {
+        //     conversationId: response.conversationId,
+        //     isCreatedByUser: true,
+        //     messageId: message.messageId,
+        //     parentMessageId: message.parentMessageId,
+        //     sender: message.sender,
+        //     text: message.text,
+        //   },
+        //   responseMessage: {
+        //     cancelled: false,
+        //     conversationId: response.conversationId,
+        //     error: false,
+        //     messageId: responseMessageId,
+        //     newMessageId: responseMessageId,
+        //     parentMessageId: message.messageId,
+        //     sender: "ChatGPT",
+        //     text: response,
+        //     unfinished: false
+        //   }
+        // };
+        // finalHandler(finalResponse, { ...submission, message });
       }
-      catch(e){
+      catch (e) {
         console.log('error in opening conn.');
         // events.close();
 
@@ -223,11 +307,11 @@ export default function MessageHandler() {
 
         errorHandler(e, { ...submission, message });
       }
-      finally{
+      finally {
         setIsSubmitting(false);
       }
 
-     
+
     });
 
     // const events = new SSE(server, {
@@ -273,7 +357,7 @@ export default function MessageHandler() {
     //   errorHandler(data, { ...submission, message });
     // };
 
-    
+
     // events.stream();
 
     return () => {
