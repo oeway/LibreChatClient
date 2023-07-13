@@ -1,13 +1,14 @@
-from imjoy_rpc.hypha import login, connect_to_server
+from imjoy_rpc.hypha import login, register_rtc_service, connect_to_server
 import asyncio
+import json
+import time
+import shortuuid
 
 from langchain.chat_models import ChatOpenAI
 from langchain import LLMChain, PromptTemplate
 from langchain.memory import ConversationBufferWindowMemory
-from langchain.callbacks.base import BaseCallbackHandler
-from langchain.callbacks.streaming_stdout_final_only import (
-    FinalStreamingStdOutCallbackHandler,
-)
+from langchain.callbacks.base import AsyncCallbackHandler
+
 
 # load dotenv
 from dotenv import load_dotenv
@@ -43,14 +44,54 @@ Assistant:"""
 
 prompt = PromptTemplate(input_variables=["history", "human_input"], template=template)
 
-class MyCustomHandler(BaseCallbackHandler):
-    def __init__(self, append_message) -> None:
+class MyCustomHandler(AsyncCallbackHandler):
+    def __init__(self, append_message, debounce_time=0.2) -> None:
         super().__init__()
         self.append_message = append_message
+        self._accumulated_output = ""
+        self._debounce_time = debounce_time
+        self._debounce_task = None
 
-    def on_llm_new_token(self, token, **kwargs):
-        self.append_message(token)
+    async def on_llm_start(self, *args, **kwargs):
+        self._accumulated_output = ""
+    
+    async def on_llm_end(self, *args, **kwargs):
+        if self._debounce_task:
+            self._debounce_task.cancel()
 
+    async def on_llm_new_token(self, token, **kwargs):
+        self._accumulated_output += token
+        await self.debounce_flush()
+
+    async def debounce_flush(self):
+        if self._debounce_task:
+            self._debounce_task.cancel()
+
+        async def delayed_func():
+            await asyncio.sleep(self._debounce_time)
+            await self.append_message(self._accumulated_output)
+            self._accumulated_output = ""
+
+        self._debounce_task = asyncio.create_task(delayed_func())
+
+plugin = {
+    "inputs": [
+        {
+            "plugin": "Web Browser",
+            "input": "how to develop plugins for ChatGPT",
+            "thought": "The user is asking for guidance on how to develop plugins for ChatGPT.",
+            "inputStr": "{\n\tplugin: Web Browser\n\tinput: how to develop plugins for ChatGPT\n\tthought: The user is asking for guidance on how to develop plugins for ChatGPT.\n}"
+        },
+        {
+            "plugin": "Web Browser",
+            "input": "developing plugins for ChatGPT",
+            "thought": "The web-browser tool requires a valid URL as input. Let me try again with a different input.",
+            "inputStr": "{\n\tplugin: Web Browser\n\tinput: developing plugins for ChatGPT\n\tthought: The web-browser tool requires a valid URL as input. Let me try again with a different input.\n}"
+        },
+    ],
+    "latest": "Self Reflection",
+    "outputs": "Input: how to develop plugins for ChatGPT\nOutput: TypeError [ERR_INVALID_URL]: Invalid URL\n---\nInput: developing plugins for ChatGPT\nOutput: TypeError [ERR_INVALID_URL]: Invalid URL\n---\n"
+}
 
 async def start_bot():
 
@@ -61,9 +102,11 @@ async def start_bot():
             conversation_id = "bd448ecf-bbf6-4eaa-9575-8f1629af7069"
             await init(conversation_id)
             for idx in range(0, len(test_story), 100):
-                await stream_output(test_story[idx:idx+100])
-            return test_story
+                await stream_output(test_story[idx:idx+100], plugin)
+            return {'text': test_story, 'plugin': plugin, 'conversation_id': conversation_id}
 
+        conversation_id = shortuuid.uuid()
+        await init(conversation_id)
         if chat_history is None:
             chat_history = []
             memory = ConversationBufferWindowMemory( k=2)
@@ -85,33 +128,49 @@ async def start_bot():
         )
         return output
 
-    # try:
-    #     print(await chat("Hello", append_message=print))
-    # except Exception as e:
-    #     print(e)
-    # finally:
-    #     loop = asyncio.get_event_loop()
-    #     loop.stop()
-    #     return
+    try:
+        print("Connecting to server...", flush=True)
+        # try to load token from .hypha-token file
+        try:
+            with open(".hypha-token", "r") as f:
+                token_info = json.loads(f.read())
+                token = token_info["token"]
+            # check if the token is expired
+            if time.time() - token_info["time"] > 3600 * 12:
+                raise Exception("Token expired")
+            try:
+                server = await connect_to_server(
+                    {"name": "hypha-bot", "server_url": SERVER_URL,"token": token, "webrtc": True}
+                )
+            except PermissionError:
+                raise Exception("Failed to login expired")
+        except Exception:
+            token = await login({"server_url": SERVER_URL})
+            server = await connect_to_server(
+                {"name": "hypha-bot", "server_url": SERVER_URL,"token": token, "webrtc": True}
+            )
+            # write token into .hypha-token file and save the current time as json file
+            with open(".hypha-token", "w") as f:
+                f.write(json.dumps({"token": token, "time": time.time()}))
 
-    token = await login({"server_url": SERVER_URL})
-    server = await connect_to_server(
-        {"name": "hypha-bot", "server_url": SERVER_URL,"token": token}
-    )
-    print(server.config)
+        print("Connected to server.", flush=True)
 
-    await server.register_service({
-        "name": "ChatBot",
-        "id": "hypha-chatbot",
-        "config": {
-            "visibility": "protected",
-            "require_context": True,
-            "run_in_executor": True,
-        },
-        "chat": chat,
-    })
-    print("Hypha chatbot is ready to chat!", server.config)
+        await server.register_service({
+            "name": "ChatBot",
+            "id": "hypha-chatbot",
+            "config": {
+                "visibility": "protected",
+                "require_context": True,
+                "run_in_executor": True,
+            },
+            "chat": chat,
+        })
+        print("Hypha chatbot is ready to chat!", server.config, flush=True)
     
+    except Exception as e:
+        print(e)
+        loop.stop()
+        return
     
 
 server_url = "https://ai.imjoy.io"

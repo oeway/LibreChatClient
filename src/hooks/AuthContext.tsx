@@ -7,18 +7,16 @@ import {
   createContext,
   useContext
 } from 'react';
-import { hyphaWebsocketClient } from 'imjoy-rpc';
 import {
   TUser,
-  TLoginResponse,
   setTokenHeader,
   useLoginUserMutation,
   useLogoutUserMutation,
   useGetUserQuery,
   useRefreshTokenMutation,
-  TLoginUser
 } from '~/data-provider';
 import { useNavigate } from 'react-router-dom';
+import { hyphaWebsocketClient } from 'imjoy-rpc';
 
 export type TAuthContext = {
   user: TUser | undefined;
@@ -26,7 +24,7 @@ export type TAuthContext = {
   hypha: any | undefined;
   isAuthenticated: boolean;
   error: string | undefined;
-  login: (data: TLoginUser) => void;
+  login: (token: string) => void;
   logout: () => void;
 };
 
@@ -42,6 +40,7 @@ window['errorTimeout'] = undefined;
 const AuthContext = createContext<TAuthContext | undefined>(undefined);
 
 const AuthContextProvider = ({ children }: { children: ReactNode }) => {
+  const [connecting, setConnecting] = useState<boolean>(false);
   const [hypha, setHypha] = useState<any | undefined>(undefined);
   const [user, setUser] = useState<TUser | undefined>(undefined);
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -77,6 +76,13 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
       //@ts-ignore - ok for token to be undefined initially
       setTokenHeader(token);
       setIsAuthenticated(isAuthenticated);
+      // save token to local storage
+      if (token) {
+        localStorage.setItem('token', token);
+        // set the expiry to 12h from now
+        localStorage.setItem('tokenExpiry', new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString());
+      }
+
       if (redirect) {
         navigate(redirect);
       }
@@ -84,42 +90,29 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
     [navigate]
   );
 
-  const getCookieValue = (key) => {
-    let keyValue = document.cookie.match('(^|;) ?' + key + '=([^;]*)(;|$)');
-    return keyValue ? keyValue[2] : null;
-  };
-
-  const login = (data: TLoginUser) => {
-    loginUser.mutate(data, {
-      onSuccess: (data: TLoginResponse) => {
-        const { user, token } = data;
-        setUserContext({ token, isAuthenticated: true, user, redirect: '/chat/new', hypha: undefined });
-      },
-      onError: (error) => {
-        doSetError(error.message);
-      }
-    });
+  const login = (token: string) => {
+    setConnecting(true);
+    if(connecting) return;
+    hyphaWebsocketClient.connectToServer({ server_url: "https://ai.imjoy.io", token: token }).then((server) => {
+      console.log("connected to server", server)
+      setUserContext({ token, isAuthenticated: true, redirect: '/chat/new', hypha: server });
+      setConnecting(false)
+    }).catch((err) => {
+      console.error("failed to connect to server", err)
+      setConnecting(false)
+    })
   };
 
   const logout = () => {
-    document.cookie.split(';').forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, '')
-        .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
-    });
-    logoutUser.mutate(undefined, {
-      onSuccess: () => {
-        setUserContext({
-          token: undefined,
-          isAuthenticated: false,
-          user: undefined,
-          hypha: undefined,
-          redirect: '/login'
-        });
-      },
-      onError: (error) => {
-        doSetError(error.message);
-      }
+    // remove token from local storage
+    localStorage.removeItem('token');
+    localStorage.removeItem('tokenExpiry');
+    setUserContext({
+      token: undefined,
+      isAuthenticated: false,
+      user: undefined,
+      hypha: undefined,
+      redirect: '/login'
     });
   };
 
@@ -135,22 +128,21 @@ const AuthContextProvider = ({ children }: { children: ReactNode }) => {
       doSetError(undefined);
     }
     if (!token || !isAuthenticated) {
-      const tokenFromCookie = getCookieValue('token');
-      if (tokenFromCookie) {
-        setUserContext({ token: tokenFromCookie, isAuthenticated: true, user: userQuery.data, hypha: undefined });
-      } else {
-        // navigate('/login');
-        hyphaWebsocketClient.login({server_url: "https://ai.imjoy.io", login_callback(context){
-          window.open(context.login_url, "_blank")
-          console.log("login callback", context)
-        }}).then((token) => {
-          hyphaWebsocketClient.connectToServer({server_url: "https://ai.imjoy.io", token: token}).then((server) => {
-            console.log("connected to server", server)  
-            setUserContext({ token, isAuthenticated: true, user: userQuery.data, hypha: server });
-          });
-        }).catch((err) => {
-          console.error(err)
-        })
+      // read token from local storage and check the expiry
+      const tokenFromLocalStorage = localStorage.getItem('token');
+      const tokenFromLocalStorageExpiry = localStorage.getItem('tokenExpiry');
+      if (tokenFromLocalStorage && tokenFromLocalStorageExpiry) {
+        const tokenExpiry = new Date(tokenFromLocalStorageExpiry);
+        if (tokenExpiry > new Date()) {
+          login(tokenFromLocalStorage);
+        } else {
+          localStorage.removeItem('token');
+          localStorage.removeItem('tokenExpiry');
+          navigate('/login');
+        }
+      }
+      else{
+        navigate('/login');
       }
     }
   }, [

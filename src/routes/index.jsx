@@ -16,18 +16,6 @@ const AuthLayout = () => (
 
 export const router = createBrowserRouter([
   {
-    path: 'register',
-    element: ALLOW_REGISTRATION ? <Registration /> : <Navigate to="/login" replace={true} />
-  },
-  {
-    path: 'forgot-password',
-    element: <RequestPasswordReset />
-  },
-  {
-    path: 'reset-password',
-    element: <ResetPassword />
-  },
-  {
     element: <AuthLayout />,
     children: [
       {

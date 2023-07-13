@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRecoilValue, useResetRecoilState, useSetRecoilState } from 'recoil';
-import { SSE } from '~/data-provider/sse.mjs';
-import createPayload from '~/data-provider/createPayload';
 import store from '~/store';
 import { useAuthContext } from '~/hooks/AuthContext';
 import { v4 } from 'uuid';
@@ -14,6 +12,7 @@ export default function MessageHandler() {
   const resetLatestMessage = useResetRecoilState(store.latestMessage);
   const { token, hypha } = useAuthContext();
   const { refreshConversations } = store.useConversations();
+  const [ chatService, setChatService] = useState(null);
 
   const messageHandler = (data, submission) => {
     const { messages, message, plugin, initialResponse, isRegenerate = false } = submission;
@@ -156,75 +155,53 @@ export default function MessageHandler() {
     setMessages([...messages, message, errorResponse]);
     return;
   };
-
-  const abortConversation = (conversationId) => {
-    console.log(submission);
-    const { endpoint } = submission?.conversation || {};
-
-    fetch(`/api/ask/${endpoint}/abort`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        abortKey: conversationId
-      })
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        console.log('aborted', data);
-        cancelHandler(data, submission);
-      })
-      .catch((error) => {
-        console.error('Error aborting request');
-        console.error(error);
-        // errorHandler({ text: 'Error aborting request' }, { ...submission, message });
-      });
-    return;
-  };
+  useEffect(() => {
+    if(hypha){
+      if(!chatService){
+        hypha.getService('hypha-chatbot', true).then(async (svc) => {
+          console.log('chat service obtained: ', svc)
+          setChatService(svc);
+        });
+      }
+    }
+  }, [hypha]);
 
   useEffect(() => {
     if (submission === null) return;
     if (Object.keys(submission).length === 0) return;
 
     let { message } = submission;
-    // const { server, payload } = createPayload(submission);
-    hypha.getService('hypha-chatbot').then(async (svc) => {
+    if(!chatService) {
+      console.error('chat service not ready');
+      return;
+    }
+  
+    (async () => {
       try {
         setIsSubmitting(true);
         let accumulatedText = '';
         const responseMessageId = v4();
-
-        const conversationId = v4();
-        const msg =  {
-          conversationId,
-          isCreatedByUser: true,
-          messageId: message.messageId,
-          parentMessageId: message.parentMessageId,
-          sender: message.sender,
-          text: message.text,
-        };
-        const newMessage = {
-          ...msg,
-          overrideParentMessageId: message?.overrideParentMessageId
-        };
-        createdHandler(null, { ...submission, newMessage });
-        console.log('created', newMessage);
-
-        let token = "===========>"
-        accumulatedText = accumulatedText + token;
-        console.log('token', token);
-        messageHandler(accumulatedText, { ...submission, message });
-        token = "=====================>"
-        accumulatedText = accumulatedText + token;
-        console.log('token', token);
-        messageHandler(accumulatedText, { ...submission, message });
-      
-        const response = {
-          conversationId,
-          text: 'Hello, that is a great question. I am not sure what the answer is.',
-        }
+        console.log('submission===>', submission);
+        const response = await chatService.chat(message.text, (conversationId) => {
+          const msg =  {
+            conversationId,
+            isCreatedByUser: true,
+            messageId: message.messageId,
+            parentMessageId: message.parentMessageId,
+            sender: message.sender,
+            text: message.text,
+          };
+          message = {
+            ...msg,
+            overrideParentMessageId: message?.overrideParentMessageId
+          };
+          createdHandler(null, { ...submission, message });
+          console.log('created', message);
+        }, (token, plugin) => {
+          accumulatedText = accumulatedText + token;
+          console.log('token', token);
+          messageHandler(accumulatedText, { ...submission, plugin, message });
+        }, null, true)
         const finalResponse = {
           title: 'Improving Code for Flake8',
           final: true,
@@ -240,79 +217,27 @@ export default function MessageHandler() {
           },
           responseMessage: {
             cancelled: false,
-            conversationId: response.conversationId,
+            conversationId: response.conversation_id,
             error: false,
             messageId: responseMessageId,
             newMessageId: responseMessageId,
             parentMessageId: message.messageId,
             sender: "ChatGPT",
-            text: response,
-            unfinished: false
+            text: response.text,
+            unfinished: false,
+            plugin: response.plugin
           }
         };
         finalHandler(finalResponse, { ...submission, message });
-
-        // const response = await svc.chat(message.text, (conversationId) => {
-        //   const msg =  {
-        //     conversationId,
-        //     isCreatedByUser: true,
-        //     messageId: message.messageId,
-        //     parentMessageId: message.parentMessageId,
-        //     sender: message.sender,
-        //     text: message.text,
-        //   };
-        //   const newMessage = {
-        //     ...msg,
-        //     overrideParentMessageId: message?.overrideParentMessageId
-        //   };
-        //   createdHandler(null, { ...submission, newMessage });
-        //   console.log('created', newMessage);
-        // }, (token) => {
-        //   accumulatedText = accumulatedText + token;
-        //   console.log('token', token);
-        //   messageHandler(accumulatedText, { ...submission, message });
-        // }, null, true)
-        // const finalResponse = {
-        //   title: 'Improving Code for Flake8',
-        //   final: true,
-        //   conversation: {
-        //   },
-        //   requestMessage: {
-        //     conversationId: response.conversationId,
-        //     isCreatedByUser: true,
-        //     messageId: message.messageId,
-        //     parentMessageId: message.parentMessageId,
-        //     sender: message.sender,
-        //     text: message.text,
-        //   },
-        //   responseMessage: {
-        //     cancelled: false,
-        //     conversationId: response.conversationId,
-        //     error: false,
-        //     messageId: responseMessageId,
-        //     newMessageId: responseMessageId,
-        //     parentMessageId: message.messageId,
-        //     sender: "ChatGPT",
-        //     text: response,
-        //     unfinished: false
-        //   }
-        // };
-        // finalHandler(finalResponse, { ...submission, message });
       }
       catch (e) {
         console.log('error in opening conn.');
-        // events.close();
-
-        // const data = JSON.parse(e.data);
-
         errorHandler(e, { ...submission, message });
       }
       finally {
         setIsSubmitting(false);
       }
-
-
-    });
+    })();
 
     // const events = new SSE(server, {
     //   payload: JSON.stringify(payload),
